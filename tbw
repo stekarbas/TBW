@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# tbw.sh
+# tbw
 # Show TBW / wear / health for all SSD/NVMe drives.
 #
 # Usage:
-#   sudo ./tbw.sh
-
-if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "Error: this script must be run as root."
-    echo "Example:"
-    echo "  sudo $0"
-    exit 1
-fi
+#   ./tbw
+#   ./tbw <host> [host...]
 
 need_cmd() {
     command -v "$1" >/dev/null 2>&1 || {
@@ -21,12 +15,61 @@ need_cmd() {
     }
 }
 
-need_cmd smartctl
-need_cmd lsblk
-need_cmd awk
-need_cmd sed
-need_cmd tr
-need_cmd grep
+SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+
+usage() {
+    cat <<EOF
+Usage:
+  $0                    # run locally (prompts for sudo password)
+  $0 <host> [host...]   # run on one or more remote hosts over SSH
+EOF
+}
+
+ensure_local_root() {
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        return
+    fi
+
+    need_cmd sudo
+    exec sudo "$SCRIPT_PATH" --as-root "$@"
+}
+
+run_remote() {
+    local host="$1"
+    local payload
+
+    need_cmd ssh
+    need_cmd base64
+
+    payload="$(base64 < "$SCRIPT_PATH" | tr -d '\n')"
+    ssh -tt "$host" \
+        "tmp_script=\$(mktemp /tmp/tbw.XXXXXX.sh) &&
+         printf '%s' '$payload' | base64 -d > \"\$tmp_script\" &&
+         chmod 700 \"\$tmp_script\" &&
+         sudo \"\$tmp_script\" --as-root;
+         rc=\$?;
+         rm -f \"\$tmp_script\";
+         exit \$rc"
+}
+
+run_remote_many() {
+    local rc=0
+    local host host_rc
+
+    for host in "$@"; do
+        if [[ "$#" -gt 1 ]]; then
+            printf "\n=== %s ===\n" "$host"
+        fi
+
+        if ! run_remote "$host"; then
+            host_rc=$?
+            echo "Error: failed on host '$host' (exit $host_rc)." >&2
+            rc=1
+        fi
+    done
+
+    return "$rc"
+}
 
 trim() {
     sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
@@ -275,6 +318,13 @@ get_disk_usage() {
 }
 
 main() {
+    need_cmd smartctl
+    need_cmd lsblk
+    need_cmd awk
+    need_cmd sed
+    need_cmd tr
+    need_cmd grep
+
     mapfile -t devices < <(list_ssd_devices)
 
     if [[ "${#devices[@]}" -eq 0 ]]; then
@@ -319,4 +369,37 @@ main() {
     done
 }
 
-main "$@"
+entrypoint() {
+    local as_root=0
+    local hosts=()
+
+    if [[ "${1:-}" == "--as-root" ]]; then
+        as_root=1
+        shift
+    fi
+
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        usage
+        exit 0
+    fi
+
+    if [[ "$#" -gt 0 ]]; then
+        hosts=("$@")
+        run_remote_many "${hosts[@]}"
+        exit $?
+    fi
+
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+        if [[ "$as_root" -eq 1 ]]; then
+            echo "Error: failed to obtain root privileges."
+            exit 1
+        fi
+
+        ensure_local_root "$@"
+        exit $?
+    fi
+
+    main
+}
+
+entrypoint "$@"
