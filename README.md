@@ -19,8 +19,8 @@ It reads SMART information via `smartctl` and prints a compact table with:
 
 - Linux
 - `smartctl` (from `smartmontools`)
-- `lsblk`, `awk`, `sed`, `tr`, `grep`, `df`, `base64`
-- `ssh` (for remote mode)
+- `lsblk`, `awk`, `sed`, `tr`, `grep`, `df`
+- `ssh` (for remote mode; requires `/usr/local/bin/tbw` on each target host)
 - Root privileges (required by `smartctl` on most systems)
 
 ## Usage
@@ -34,12 +34,6 @@ Run against one or more remote hosts over SSH:
 ```bash
 ./tbw server1
 ./tbw server1 server2 server3
-```
-
-Backward compatibility:
-
-```bash
-./tbw.sh ...
 ```
 
 ## Notes

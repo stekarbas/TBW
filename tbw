@@ -36,20 +36,14 @@ ensure_local_root() {
 
 run_remote() {
     local host="$1"
-    local payload
 
     need_cmd ssh
-    need_cmd base64
-
-    payload="$(base64 < "$SCRIPT_PATH" | tr -d '\n')"
     ssh -tt "$host" \
-        "tmp_script=\$(mktemp /tmp/tbw.XXXXXX.sh) &&
-         printf '%s' '$payload' | base64 -d > \"\$tmp_script\" &&
-         chmod 700 \"\$tmp_script\" &&
-         sudo \"\$tmp_script\" --as-root;
-         rc=\$?;
-         rm -f \"\$tmp_script\";
-         exit \$rc"
+        "if [[ ! -x /usr/local/bin/tbw ]]; then
+             echo 'Error: /usr/local/bin/tbw is not installed on $host.' >&2;
+             exit 127;
+         fi;
+         sudo /usr/local/bin/tbw --as-root"
 }
 
 run_remote_many() {
