@@ -54,7 +54,7 @@ To avoid repeated password prompts across many hosts:
 3. Add a restricted sudoers rule (with `visudo`) for your user:
 
 ```sudoers
-stefan ALL=(root) NOPASSWD: /usr/local/bin/tbw --as-root
+<user> ALL=(root) NOPASSWD: /usr/local/bin/tbw --as-root
 ```
 
 Then remote runs can be passwordless:
